@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Глобальная переменная для хранения ников в памяти
+# Глобальная переменная для хранения ников
 memory_nicks = {}
 
 def load_nicks():
@@ -35,9 +35,8 @@ def save_nicks(data):
     try:
         with open(NICKS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        logging.info(f"Данные сохранены в файл: {data}")
     except Exception as e:
-        logging.error(f"Ошибка записи файла: {e}. Данные сохранены только в памяти.")
+        logging.error(f"Ошибка записи файла: {e}.")
 
 # Загружаем при старте
 load_nicks()
@@ -55,22 +54,18 @@ async def cmd_snick(message: Message):
     target_name = ""
     new_nick = ""
 
-    # Если это ответ на сообщение
     if message.reply_to_message:
         target_user = message.reply_to_message.from_user
         target_id = str(target_user.id)
         target_name = target_user.first_name or target_user.username or "Пользователь"
         
         if not clean_text:
-            # Если ответили на сообщение, но не написали ник
             return await message.reply("❌ Необходимо указать никнейм.\nПример: `/snick Дуров`", parse_mode="Markdown")
             
         new_nick = clean_text
     else:
-        # Если написали текстом
         args = clean_text.split(maxsplit=1)
         if len(args) < 2:
-            # Если не указали ник или юзера
             error_text = (
                 "❌ Необходимо указать никнейм.\n\n"
                 "Пример: `/snick id1 Дуров`.\n\n"
@@ -105,9 +100,18 @@ async def cmd_snick(message: Message):
     }
     save_nicks(nicks)
 
-    # Отправляем результат
+    # Делаем имена кликабельными через tg://user?id=
+    admin_id = message.from_user.id
     admin_name = message.from_user.first_name or message.from_user.username or "Админ"
-    final_msg = f"<b>{admin_name}</b> установил никнейм <b>{target_name}</b> <b>{new_nick}</b>"
+    
+    # Если цель - это ID (цифры), делаем кликабельной, если @username - оставляем как есть
+    if target_id.isdigit():
+        target_name_html = f'<a href="tg://user?id={target_id}">{target_name}</a>'
+    else:
+        target_name_html = target_name
+
+    final_msg = f'<a href="tg://user?id={admin_id}">{admin_name}</a> установил никнейм {target_name_html}: <b>{new_nick}</b>'
+    
     await message.reply(final_msg, parse_mode="HTML")
 
 # --- КОМАНДА /nlist ---
@@ -119,15 +123,26 @@ async def cmd_nlist(message: Message):
         return await message.reply("📭 Список ников пуст.")
 
     msg_text = "📋 <b>Список установленных ников:</b>\n\n"
+    count = 1
     
     for target_id, data in nicks.items():
         name = data.get("name", "Пользователь")
         nick = data.get("nick", "—")
-        msg_text += f"👤 <b>{name}</b> — {nick}\n"
+        
+        # Делаем имя кликабельным, если это ID
+        if target_id.isdigit():
+            name_html = f'<a href="tg://user?id={target_id}">{name}</a>'
+        else:
+            name_html = name
+            
+        msg_text += f"{count}. {name_html} — <b>{nick}</b>\n"
+        count += 1
 
+        # Если сообщение слишком длинное, отправляем частями
         if len(msg_text) > 3500:
             await message.reply(msg_text, parse_mode="HTML")
             msg_text = ""
+            count = 1 # Сбрасываем нумерацию для следующего сообщения (или можно продолжить, если хотите)
 
     if msg_text:
         await message.reply(msg_text, parse_mode="HTML")
