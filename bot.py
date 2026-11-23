@@ -55,15 +55,29 @@ async def cmd_snick(message: Message):
     target_name = ""
     new_nick = ""
 
+    # Если это ответ на сообщение
     if message.reply_to_message:
         target_user = message.reply_to_message.from_user
         target_id = str(target_user.id)
         target_name = target_user.first_name or target_user.username or "Пользователь"
+        
+        if not clean_text:
+            # Если ответили на сообщение, но не написали ник
+            return await message.reply("❌ Необходимо указать никнейм.\nПример: `/snick Дуров`", parse_mode="Markdown")
+            
         new_nick = clean_text
     else:
+        # Если написали текстом
         args = clean_text.split(maxsplit=1)
         if len(args) < 2:
-            return await message.reply("❌ Использование: `/snick @username Ник`\n(или ответом: `/snick Ник`)", parse_mode="Markdown")
+            # Если не указали ник или юзера
+            error_text = (
+                "❌ Необходимо указать никнейм.\n\n"
+                "Пример: `/snick id1 Дуров`.\n\n"
+                "Либо прикрепите сообщение человека, которому хотите дать никнейм и укажите его: `/snick Дуров`.\n\n"
+                "Для выдачи ника `/snick *Юз типа котору надо выдать ник* *Ник*`"
+            )
+            return await message.reply(error_text, parse_mode="Markdown")
         
         target_id = args[0]
         target_name = args[0]
@@ -72,6 +86,7 @@ async def cmd_snick(message: Message):
     if len(new_nick) > 32:
         return await message.reply("❌ Ник слишком длинный (макс. 32 символа).")
 
+    # Пытаемся установить визуально (титул)
     try:
         user_id_for_api = int(target_id) if target_id.isdigit() else target_id
         await bot.set_chat_administrator_custom_title(
@@ -82,6 +97,7 @@ async def cmd_snick(message: Message):
     except Exception as e:
         logging.warning(f"Не удалось установить титул (ошибка TG): {e}")
 
+    # Сохраняем в базу
     nicks = load_nicks()
     nicks[str(target_id)] = {
         "name": target_name,
@@ -89,6 +105,7 @@ async def cmd_snick(message: Message):
     }
     save_nicks(nicks)
 
+    # Отправляем результат
     admin_name = message.from_user.first_name or message.from_user.username or "Админ"
     final_msg = f"<b>{admin_name}</b> установил никнейм <b>{target_name}</b> <b>{new_nick}</b>"
     await message.reply(final_msg, parse_mode="HTML")
